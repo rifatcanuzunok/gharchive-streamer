@@ -1,6 +1,8 @@
-from gharchive_streamer._models import GHTimestamp, generate_timestamps
 from datetime import datetime
+
 import pytest
+
+from gharchive_streamer._models import GHTimestamp, generate_timestamps
 
 
 class TestGHTimestamp:

@@ -3,15 +3,12 @@ name = "gharchive-streamer"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-authors = [
-    { name = "rifatcanuzunok", email = "rifatcanuzunok@gmail.com" }
-]
+authors = [{ name = "rifatcanuzunok", email = "rifatcanuzunok@gmail.com" }]
 requires-python = ">=3.14.6"
-dependencies = [
-    "debugpy>=1.8.21",
-    "pytest>=9.1.1",
-    "requests>=2.34.2",
-]
+dependencies = ["httpx>=0.28.1", "requests>=2.34.2"]
+
+[project.optional-dependencies]
+dev = ["debugpy>=1.8.21", "pytest>=9.1.1", "pytest-httpx>=0.36.2"]
 
 [build-system]
 requires = ["uv_build>=0.11.21,<0.12.0"]
