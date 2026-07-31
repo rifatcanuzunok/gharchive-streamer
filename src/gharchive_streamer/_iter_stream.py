@@ -10,7 +10,7 @@ class IterStream(io.RawIOBase):
     def readable(self) -> bool:
         return True
 
-    def read(self, size: int = -1, /) -> bytes:
+    def read(self, size: int = -1) -> bytes:
         while size < 0 or len(self._buffer) < size:
             try:
                 chunk = next(self._it)

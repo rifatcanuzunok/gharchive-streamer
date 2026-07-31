@@ -1,15 +1,33 @@
 [project]
 name = "gharchive-streamer"
 version = "0.1.0"
-description = "Add your description here"
+description = "A memory-efficient streaming client for GitHub Archive data."
 readme = "README.md"
+license = { text = "MIT" }
 authors = [{ name = "rifatcanuzunok", email = "rifatcanuzunok@gmail.com" }]
-requires-python = ">=3.14.6"
-dependencies = ["httpx>=0.28.1", "requests>=2.34.2"]
+requires-python = ">=3.10"
+dependencies = ["httpx>=0.25"]
 
 [project.optional-dependencies]
-dev = ["debugpy>=1.8.21", "pytest>=9.1.1", "pytest-httpx>=0.36.2"]
+dev = [
+    "debugpy>=1.8.21",
+    "pytest>=9.1.1",
+    "pytest-httpx>=0.36.2",
+    "mypy>=1",
+    "ruff>=0.5",
+]
+
+[project.urls]
+Homepage = "https://github.com/rifatcanuzunok/gharchive-streamer"
+Repository = "https://github.com/rifatcanuzunok/gharchive-streamer"
 
 [build-system]
-requires = ["uv_build>=0.11.21,<0.12.0"]
-build-backend = "uv_build"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+strict = false
