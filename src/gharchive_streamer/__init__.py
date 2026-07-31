@@ -34,7 +34,7 @@ def stream_events(
     start: datetime,
     end: datetime,
     *,
-    use_cache: bool = True,
+    use_cache: bool = False,
     cache_dir: str = ".gharchive_cache",
     fetcher: Fetcher | None = None,
 ) -> Iterator[dict[str, Any]]:
