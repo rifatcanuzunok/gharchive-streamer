@@ -11,10 +11,12 @@ pip install gharchive-stream
 ## Usage
 
 ```python
-from datetime import datetime
-from gharchive_streamer import stream_events
-
-for event in stream_events(datetime(2026, 1, 1, 0), datetime(2026, 1, 1, 2)):
+for event in streaming_parallel_stream_events(
+    datetime(2026, 1, 1),
+    datetime(2026, 1, 2),
+    max_workers=4,
+    chunk_hours=6,
+):
     print(event["type"])
 ```
 
