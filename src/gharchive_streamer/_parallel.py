@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import queue
 from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -40,12 +40,12 @@ def streaming_parallel_stream_events(
     chunk_hours: int = 6,
     queue_maxsize: int = 500,
     **kwargs,
-) -> Iterator[Dict[str, Any]]:
+) -> Iterator[dict[str, Any]]:
     chunks = _split_range(start, end, chunk_hours)
-    event_queue = queue.Queue(maxsize=queue_maxsize)
+    event_queue: queue.Queue[dict[str, Any] | None] = queue.Queue(maxsize=queue_maxsize)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures: List[Future] = []
+        futures: list[Future] = []
         for c_start, c_end in chunks:
             future = executor.submit(
                 _stream_chunk_to_queue, c_start, c_end, event_queue, **kwargs
@@ -68,7 +68,20 @@ def streaming_parallel_stream_events(
                 logger.error("Chunk failed: %s", future.exception())
 
 
-def _stream_chunk_to_queue(start, end, q, **kwargs):
+def _stream_chunk(
+    start: datetime,
+    end: datetime,
+    **kwargs,
+) -> list[dict[str, Any]]:
+    return list(stream_events(start, end, **kwargs))
+
+
+def _stream_chunk_to_queue(
+    start: datetime,
+    end: datetime,
+    q: queue.Queue[dict[str, Any] | None],
+    **kwargs,
+) -> None:
     try:
         for event in stream_events(start, end, **kwargs):
             q.put(event)
@@ -78,11 +91,13 @@ def _stream_chunk_to_queue(start, end, q, **kwargs):
         q.put(None)
 
 
-def _split_range(start, end, chunk_hours):
+def _split_range(start: datetime, end: datetime, chunk_hours: int) -> list[tuple[datetime, datetime]]:
+    if chunk_hours < 1:
+        raise ValueError("chunk_hours must be >= 1")
     chunks = []
     current = start
-    while current < end:
-        chunk_end = min(current + timedelta(hours=chunk_hours), end)
+    while current <= end:
+        chunk_end = min(current + timedelta(hours=chunk_hours - 1), end)
         chunks.append((current, chunk_end))
-        current = chunk_end
+        current = chunk_end + timedelta(hours=1)
     return chunks

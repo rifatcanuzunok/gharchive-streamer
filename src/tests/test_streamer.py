@@ -2,7 +2,10 @@ import gzip
 import io
 import json
 
+import pytest
+
 from gharchive_streamer._client import Fetcher
+from gharchive_streamer._exceptions import DecompressionError
 from gharchive_streamer._gharchive_streamer import GHArchiveStreamer
 from gharchive_streamer._iter_stream import IterStream
 from gharchive_streamer._models import GHTimestamp
@@ -63,3 +66,22 @@ class TestGHArchiveStreamer:
 
         result = list(streamer.stream_hour(ts))
         assert result == []
+
+
+class TestDecompressionError:
+    def test_non_gzip_data_raises_decompression_error(self):
+        mock_fetcher = MockFetcher([b"this is not gzip data"])
+        streamer = GHArchiveStreamer(mock_fetcher)
+        ts = GHTimestamp(2023, 1, 1, 0)
+
+        with pytest.raises(DecompressionError):
+            list(streamer.stream_hour(ts))
+
+    def test_truncated_gzip_raises_decompression_error(self):
+        full = gzip_bytes(b'{"id": 1}\n')
+        mock_fetcher = MockFetcher([full[:16]])
+        streamer = GHArchiveStreamer(mock_fetcher)
+        ts = GHTimestamp(2023, 1, 1, 0)
+
+        with pytest.raises(DecompressionError):
+            list(streamer.stream_hour(ts))

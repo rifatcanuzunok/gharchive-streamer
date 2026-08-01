@@ -5,6 +5,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from gharchive_streamer._client import Fetcher
+from gharchive_streamer._exceptions import DecompressionError
 from gharchive_streamer._iter_stream import IterStream
 from gharchive_streamer._models import GHTimestamp
 
@@ -20,7 +21,10 @@ class GHArchiveStreamer:
         logger.info(f"Fetching {url}")
         byte_iterator = self._fetcher.fetch(url=url)
         stream = IterStream(byte_iterator)
-        with gzip.GzipFile(fileobj=stream, mode="rb") as gz:
-            for line in gz:
-                if line.strip():
-                    yield json.loads(line)
+        try:
+            with gzip.GzipFile(fileobj=stream, mode="rb") as gz:
+                for line in gz:
+                    if line.strip():
+                        yield json.loads(line)
+        except (gzip.BadGzipFile, EOFError, OSError) as e:
+            raise DecompressionError(f"Failed to decompress {url}: {e}") from e

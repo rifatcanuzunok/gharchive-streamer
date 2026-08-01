@@ -49,6 +49,8 @@ def stream_events(
         try:
             yield from streamer.stream_hour(ts)
         except DataUnavailableError:
-            logger.warning(f"No data found, skipping: {ts.to_url}")
+            logger.warning("No data found, skipping: %s", ts.to_url())
+        except NetworkError as e:
+            logger.error("Network error for %s: %s", ts.to_url(), e)
         except Exception as e:
-            logger.error(f"Unexpected error: {ts.to_url}:{e}")
+            logger.error("Unexpected error for %s: %s", ts.to_url(), e)
