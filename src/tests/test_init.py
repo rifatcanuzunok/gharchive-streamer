@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from gharchive_streamer import stream_events
+from gharchive_streamer import HttpFetcher, stream_events
 from gharchive_streamer._client import Fetcher
 from gharchive_streamer._exceptions import DataUnavailableError, NetworkError
 from gharchive_streamer._models import GHTimestamp
@@ -37,6 +37,50 @@ class SkipMissingFetcher(MapFetcher):
 
 def hour_url(hour: int) -> str:
     return GHTimestamp(2023, 1, 1, hour).to_url()
+
+
+    def test_stream_events_closes_its_own_fetcher(self, monkeypatch):
+        closed = []
+
+        class SpyHttpFetcher(HttpFetcher):
+            def close(self):
+                closed.append(True)
+                super().close()
+
+        monkeypatch.setattr("gharchive_streamer.HttpFetcher", SpyHttpFetcher)
+
+        result = list(
+            stream_events(
+                datetime(2023, 1, 2, 0, tzinfo=UTC),
+                datetime(2023, 1, 1, 0, tzinfo=UTC),
+            )
+        )
+
+        assert result == []
+        assert closed == [True]
+
+    def test_stream_events_does_not_close_injected_fetcher(self):
+        class SpyFetcher(Fetcher):
+            def __init__(self):
+                self.closed = False
+
+            def fetch(self, url):
+                yield b""
+
+            def close(self):
+                self.closed = True
+
+        fetcher = SpyFetcher()
+
+        list(
+            stream_events(
+                datetime(2023, 1, 2, 0, tzinfo=UTC),
+                datetime(2023, 1, 1, 0, tzinfo=UTC),
+                fetcher=fetcher,
+            )
+        )
+
+        assert not fetcher.closed
 
 
 class TestStreamEvents:

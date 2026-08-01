@@ -69,6 +69,61 @@ class TestHttpFetcher:
         custom_client.close()
 
 
+class TestHttpFetcherLifecycle:
+    def test_close_closes_owned_client(self):
+        fetcher = HttpFetcher()
+        client = fetcher._client
+
+        fetcher.close()
+
+        assert client.is_closed
+
+    def test_close_does_not_close_injected_client(self):
+        client = httpx.Client()
+        fetcher = HttpFetcher(client=client)
+
+        fetcher.close()
+
+        assert not client.is_closed
+        client.close()
+
+    def test_context_manager_closes_client(self):
+        with HttpFetcher() as fetcher:
+            client = fetcher._client
+            assert not client.is_closed
+
+        assert client.is_closed
+
+    def test_del_closes_owned_client(self):
+        fetcher = HttpFetcher()
+        client = fetcher._client
+
+        del fetcher
+
+        assert client.is_closed
+
+
+class ClosingFetcher:
+    def __init__(self):
+        self.closed = False
+
+    def fetch(self, url):
+        yield b""
+
+    def close(self):
+        self.closed = True
+
+
+class TestCloseDelegation:
+    def test_retrying_fetcher_close_delegates(self):
+        base = ClosingFetcher()
+        retrying = RetryingFetcher(base, max_retries=0)
+
+        retrying.close()
+
+        assert base.closed
+
+
 class TestRetryingFetcher:
     def test_retries_until_success(self):
         base = FlakyFetcher(failures=2)

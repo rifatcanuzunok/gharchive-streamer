@@ -41,6 +41,7 @@ def stream_events(
     max_retries: int = 3,
     retry_delay: float = 1.0,
 ) -> Iterator[dict[str, Any]]:
+    own_fetcher = fetcher is None
     if not fetcher:
         fetcher = HttpFetcher()
     if max_retries > 0:
@@ -50,8 +51,12 @@ def stream_events(
 
     streamer = GHArchiveStreamer(fetcher)
 
-    for ts in generate_timestamps(start, end):
-        try:
-            yield from streamer.stream_hour(ts)
-        except DataUnavailableError:
-            logger.warning("No data found, skipping: %s", ts.to_url())
+    try:
+        for ts in generate_timestamps(start, end):
+            try:
+                yield from streamer.stream_hour(ts)
+            except DataUnavailableError:
+                logger.warning("No data found, skipping: %s", ts.to_url())
+    finally:
+        if own_fetcher:
+            fetcher.close()

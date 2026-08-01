@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import random
 import time
@@ -15,10 +17,32 @@ class Fetcher(ABC):
     @abstractmethod
     def fetch(self, url: str) -> Iterator[bytes]: ...
 
+    def close(self) -> None:
+        pass
+
 
 class HttpFetcher(Fetcher):
     def __init__(self, client: httpx.Client | None = None):
-        self._client = client or httpx.Client()
+        self._owns_client = client is None
+        if client is None:
+            client = httpx.Client()
+        self._client = client
+
+    def close(self) -> None:
+        if self._owns_client:
+            self._client.close()
+
+    def __enter__(self) -> HttpFetcher:  # noqa: PYI034 - Self requires Python 3.11
+        return self
+
+    def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:  # noqa: BLE001, S110 - __del__ must never raise or log
+            pass
 
     def fetch(self, url: str) -> Iterator[bytes]:
         try:
@@ -47,6 +71,9 @@ class RetryingFetcher(Fetcher):
         self._max_retries = max_retries
         self._retry_delay = retry_delay
         self._backoff_factor = backoff_factor
+
+    def close(self) -> None:
+        self._fetcher.close()
 
     def fetch(self, url: str) -> Iterator[bytes]:
         attempts = 0

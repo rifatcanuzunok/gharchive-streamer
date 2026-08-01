@@ -14,6 +14,23 @@ class CountingFetcher(Fetcher):
         yield self.data
 
 
+    def test_close_delegates_to_base_fetcher(self, tmp_path):
+        class ClosableCountingFetcher(CountingFetcher):
+            def __init__(self):
+                super().__init__()
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+
+        base = ClosableCountingFetcher()
+        cached = CachedFetcher(base, str(tmp_path / "cache"))
+
+        cached.close()
+
+        assert base.closed is True
+
+
 class TestCachedFetcher:
     def test_cache_miss_then_hit(self, tmp_path):
         cache_dir = tmp_path / "cache"

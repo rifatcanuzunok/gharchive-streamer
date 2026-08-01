@@ -19,6 +19,9 @@ class CachedFetcher(Fetcher):
         self._cache_dir = Path(cache_dir)
         self._cache_dir.mkdir(parents=True, exist_ok=True)
 
+    def close(self) -> None:
+        self._fetcher.close()
+
     def fetch(self, url: str) -> Iterator[bytes]:
         filename = self._cache_dir / url.split("/")[-1]
 
