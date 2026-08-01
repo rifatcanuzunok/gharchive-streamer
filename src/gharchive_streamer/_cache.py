@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -21,16 +23,22 @@ class CachedFetcher(Fetcher):
         filename = self._cache_dir / url.split("/")[-1]
 
         if filename.exists():
-            logger.debug(f"Cache HIT: {url}")
-
+            logger.debug("Cache HIT: %s", url)
             with open(filename, "rb") as f:
                 while chunk := f.read(8192):
                     yield chunk
+            return
 
-        else:
-            logger.debug(f"Cache MISS: {url}")
-            chunks = list(self._fetcher.fetch(url))
-            with open(filename, "wb") as f:
-                for chunk in chunks:
+        logger.debug("Cache MISS: %s", url)
+        fd, tmp_name = tempfile.mkstemp(
+            prefix=f"{filename.name}.", suffix=".part", dir=self._cache_dir
+        )
+        tmp_path = Path(tmp_name)
+        try:
+            with os.fdopen(fd, "wb") as f:
+                for chunk in self._fetcher.fetch(url):
                     f.write(chunk)
-            yield from chunks
+                    yield chunk
+            os.replace(tmp_path, filename)
+        finally:
+            tmp_path.unlink(missing_ok=True)
