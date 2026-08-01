@@ -69,9 +69,8 @@ def sorted_by_id(result: list[dict]) -> list[dict]:
 class TestSplitRange:
     def test_chunks_cover_range_without_overlap_or_gap(self):
         assert _split_range(dt(0), dt(4), chunk_hours=2) == [
-            (dt(0), dt(1)),
-            (dt(2), dt(3)),
-            (dt(4), dt(4)),
+            (dt(0), dt(2)),
+            (dt(2), dt(4)),
         ]
 
     def test_single_chunk_shorter_than_chunk_hours(self):
@@ -79,16 +78,23 @@ class TestSplitRange:
 
     def test_hourly_chunks(self):
         assert _split_range(dt(0), dt(2), chunk_hours=1) == [
-            (dt(0), dt(0)),
-            (dt(1), dt(1)),
-            (dt(2), dt(2)),
+            (dt(0), dt(1)),
+            (dt(1), dt(2)),
         ]
 
     def test_single_hour_range(self):
-        assert _split_range(dt(1), dt(1), chunk_hours=1) == [(dt(1), dt(1))]
+        assert _split_range(dt(1), dt(2), chunk_hours=1) == [(dt(1), dt(2))]
+
+    def test_zero_length_range(self):
+        assert _split_range(dt(1), dt(1), chunk_hours=1) == []
 
     def test_no_chunks_when_start_after_end(self):
         assert _split_range(dt(2), dt(1), chunk_hours=1) == []
+
+    def test_end_is_exclusive(self):
+        assert _split_range(dt(23), dt(0, 2), chunk_hours=24) == [
+            (dt(23), dt(0, 2))
+        ]
 
     def test_invalid_chunk_hours(self):
         with pytest.raises(ValueError):
@@ -103,18 +109,18 @@ class TestParallelStreamEvents:
                 dt(0), dt(3), chunk_hours=1, queue_maxsize=2, fetcher=fetcher
             )
         )
-        assert sorted_by_id(result) == expected_events([0, 1, 2, 3])
+        assert sorted_by_id(result) == expected_events([0, 1, 2])
 
     def test_missing_hour_is_skipped(self):
         fetcher = make_fetcher([2])
         result = list(
-            parallel_stream_events(dt(0), dt(2), chunk_hours=1, fetcher=fetcher)
+            parallel_stream_events(dt(0), dt(4), chunk_hours=1, fetcher=fetcher)
         )
         assert result == expected_events([2])
 
     def test_single_hour_range(self):
         result = list(
-            parallel_stream_events(dt(1), dt(1), fetcher=make_fetcher([1]))
+            parallel_stream_events(dt(1), dt(2), fetcher=make_fetcher([1]))
         )
         assert result == expected_events([1])
 
@@ -157,7 +163,7 @@ class TestParallelStreamEvents:
         }
         result = list(
             parallel_stream_events(
-                dt(0), dt(2),
+                dt(0), dt(3),
                 chunk_hours=1,
                 max_retries=0,
                 fetcher=FlakyFetcher(data),
@@ -194,7 +200,7 @@ class TestParallelStreamEvents:
         errors: list[ChunkError] = []
         result = list(
             parallel_stream_events(
-                dt(0), dt(2),
+                dt(0), dt(3),
                 chunk_hours=1,
                 max_retries=0,
                 fetcher=FlakyFetcher(data),
@@ -205,7 +211,7 @@ class TestParallelStreamEvents:
         assert sorted_by_id(result) == expected_events([0, 2])
         assert len(errors) == 1
         assert errors[0].start == dt(1)
-        assert errors[0].end == dt(1)
+        assert errors[0].end == dt(2)
         assert isinstance(errors[0].exception, NetworkError)
 
     def test_on_chunk_error_not_called_when_all_chunks_succeed(self):
@@ -236,6 +242,33 @@ class TestParallelStreamEvents:
                     on_chunk_error=boom,
                 )
             )
+
+    def test_early_close_reports_failed_chunks(self):
+        class FlakyFetcher(Fetcher):
+            def __init__(self, data):
+                self.data = data
+
+            def fetch(self, url):
+                if url not in self.data:
+                    raise NetworkError(url)
+                yield self.data[url]
+
+        data = {
+            GHTimestamp(2023, 1, 1, 0).to_url(): events_bytes(make_events(0, 3))
+        }
+        errors: list[ChunkError] = []
+        gen = parallel_stream_events(
+            dt(0), dt(3),
+            chunk_hours=1,
+            max_retries=0,
+            fetcher=FlakyFetcher(data),
+            on_chunk_error=errors.append,
+        )
+
+        next(gen)
+        gen.close()
+
+        assert sorted(e.start.hour for e in errors) == [1, 2]
 
     def test_invalid_queue_maxsize(self):
         with pytest.raises(ValueError):
@@ -281,4 +314,4 @@ class TestParallelStreamEvents:
         first = next(gen)
         assert first in make_events(first["id"] // 100)
         remaining = list(gen)
-        assert len(remaining) == 149
+        assert len(remaining) == 99

@@ -1,7 +1,15 @@
+import hashlib
+
 import pytest
 
 from gharchive_streamer._cache import CachedFetcher
 from gharchive_streamer._client import Fetcher
+
+
+def cache_filename(url: str) -> str:
+    name = url.rsplit("/", 1)[-1]
+    digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]
+    return f"{digest}-{name}"
 
 
 class CountingFetcher(Fetcher):
@@ -44,7 +52,7 @@ class TestCachedFetcher:
         result1 = b"".join(cached.fetch(url))
         assert result1 == original_data
         assert base.call_count == 1
-        assert (cache_dir / "2015-01-01-15.json.gz").exists()
+        assert (cache_dir / cache_filename(url)).exists()
 
         result2 = b"".join(cached.fetch(url))
         assert result2 == original_data
@@ -53,7 +61,7 @@ class TestCachedFetcher:
     def test_chunked_cache_read(self, tmp_path):
         cache_dir = tmp_path / "cache"
         url = "https://example.com/data.gz"
-        file_path = cache_dir / "data.gz"
+        file_path = cache_dir / cache_filename(url)
         cache_dir.mkdir()
         file_path.write_bytes(b"chunk1chunk2")
 
@@ -142,4 +150,19 @@ class TestCachedFetcher:
 
         result = b"".join(cached.fetch(url))
         assert result == b"0123456789" * 1000
-        assert list(cache_dir.iterdir()) == [cache_dir / "2015-01-01-15.json.gz"]
+        assert list(cache_dir.iterdir()) == [cache_dir / cache_filename(url)]
+
+    def test_same_basename_different_urls_do_not_collide(self, tmp_path):
+        cache_dir = tmp_path / "cache"
+        url_a = "https://example.com/2023-01-01-0.json.gz"
+        url_b = "https://other.example.org/data/2023-01-01-0.json.gz"
+
+        base = CountingFetcher(b"data-a")
+        cached = CachedFetcher(base, str(cache_dir))
+
+        assert b"".join(cached.fetch(url_a)) == b"data-a"
+        base.data = b"data-b"
+        assert b"".join(cached.fetch(url_b)) == b"data-b"
+        assert b"".join(cached.fetch(url_a)) == b"data-a"
+        assert base.call_count == 2
+        assert len(list(cache_dir.iterdir())) == 2

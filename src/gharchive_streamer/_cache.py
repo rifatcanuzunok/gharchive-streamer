@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import tempfile
@@ -22,8 +23,13 @@ class CachedFetcher(Fetcher):
     def close(self) -> None:
         self._fetcher.close()
 
+    def _cache_path(self, url: str) -> Path:
+        name = url.rsplit("/", 1)[-1]
+        digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]
+        return self._cache_dir / f"{digest}-{name}"
+
     def fetch(self, url: str) -> Iterator[bytes]:
-        filename = self._cache_dir / url.split("/")[-1]
+        filename = self._cache_path(url)
 
         if filename.exists():
             logger.debug("Cache HIT: %s", url)

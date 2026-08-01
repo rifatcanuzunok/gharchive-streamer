@@ -88,14 +88,23 @@ class RetryingFetcher(Fetcher):
     def fetch(self, url: str) -> Iterator[bytes]:
         attempts = 0
         while True:
+            attempts += 1
+            yielded = False
             try:
-                attempts += 1
-                yield from self._fetcher.fetch(url)
+                gen = self._fetcher.fetch(url)
+                try:
+                    for chunk in gen:
+                        yielded = True
+                        yield chunk
+                finally:
+                    close = getattr(gen, "close", None)
+                    if close is not None:
+                        close()
                 return
             except DataUnavailableError:
                 raise
             except NetworkError as e:
-                if attempts > self._max_retries:
+                if yielded or attempts > self._max_retries:
                     raise
                 delay = self._retry_delay * (self._backoff_factor ** (attempts - 1))
                 # jitter for retry backoff, not security-sensitive

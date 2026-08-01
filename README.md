@@ -14,6 +14,8 @@ pip install gharchive-streamer
 
 Processes hours one at a time. Ideal for cache hits and CPU-bound local processing.
 
+`end` is exclusive: `stream_events(Jan 1 00:00, Jan 2 00:00)` covers exactly the 24 hours of January 1st.
+
 ```python
 from datetime import datetime, timezone
 
@@ -30,6 +32,8 @@ for event in stream_events(
 
 Downloads multiple chunks concurrently using a thread pool with bounded backpressure. Use this when network I/O dominates (the real ingestion case) — it is **not** faster than sequential for cached, CPU-bound reruns.
 
+Events are yielded as chunks complete: no chronological ordering is guaranteed.
+
 ```python
 from datetime import datetime, timezone
 
@@ -44,7 +48,7 @@ for event in parallel_stream_events(
     producer.send("github-events", event)
 ```
 
-Partially failed chunks are logged and the stream continues. If **every** chunk fails, the first error is re-raised. Hook per-chunk failures for monitoring:
+Partially failed chunks are logged and the stream continues. If **every** chunk fails, the first error is re-raised. Failed chunks are reported via `on_chunk_error` even when the stream is closed early (best-effort). Hook per-chunk failures for monitoring:
 
 ```python
 from gharchive_streamer import ChunkError, parallel_stream_events
@@ -69,7 +73,7 @@ for event in stream_events(start, end, use_cache=True, cache_dir=".gharchive_cac
 
 - Missing hours (`404`) are logged and skipped.
 - `DataUnavailableError` — hour not found.
-- `NetworkError` — network/HTTP failures (retried with jittered exponential backoff).
+- `NetworkError` — network/HTTP failures, retried per-hour with jittered exponential backoff (`max_retries`, `retry_delay`). A mid-body connection drop restarts the whole hour; events already delivered from the failed attempt may be replayed (at-least-once semantics).
 - `DecompressionError` — corrupt or truncated gzip.
 - Malformed JSON lines are warned about and skipped.
 

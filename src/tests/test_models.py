@@ -130,9 +130,23 @@ class TestGHTimestamp:
 class TestGenerateTimestamps:
     def test_single_hour(self):
         start = datetime(2023, 1, 1, 10, 0)
-        end = datetime(2023, 1, 1, 10, 0)
+        end = datetime(2023, 1, 1, 11, 0)
         result = list(generate_timestamps(start, end))
         assert result == [GHTimestamp(2023, 1, 1, 10)]
+
+    def test_zero_length_range_is_empty(self):
+        start = datetime(2023, 1, 1, 10, 0)
+        end = datetime(2023, 1, 1, 10, 0)
+        result = list(generate_timestamps(start, end))
+        assert result == []
+
+    def test_end_is_exclusive(self):
+        result = list(
+            generate_timestamps(
+                datetime(2023, 1, 1, 23, 0), datetime(2023, 1, 2, 0, 0)
+            )
+        )
+        assert result == [GHTimestamp(2023, 1, 1, 23)]
 
     def test_multiple_hours(self):
         start = datetime(2023, 1, 1, 22, 0)
@@ -142,7 +156,6 @@ class TestGenerateTimestamps:
             GHTimestamp(2023, 1, 1, 22),
             GHTimestamp(2023, 1, 1, 23),
             GHTimestamp(2023, 1, 2, 0),
-            GHTimestamp(2023, 1, 2, 1),
         ]
         assert result == expected
 
@@ -150,7 +163,7 @@ class TestGenerateTimestamps:
         start = datetime(2023, 1, 1, 0, 0)
         end = datetime(2023, 1, 2, 0, 0)
         result = list(generate_timestamps(start, end))
-        assert len(result) == 25
+        assert len(result) == 24
 
     def test_start_greater_than_end(self):
         start = datetime(2023, 1, 2, 0, 0)

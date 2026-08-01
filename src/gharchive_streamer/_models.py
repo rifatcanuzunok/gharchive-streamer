@@ -47,8 +47,8 @@ class GHTimestamp:
 
 def generate_timestamps(start: datetime, end: datetime) -> Iterator[GHTimestamp]:
     current = GHTimestamp.from_datetime(start)
-    end_ts = GHTimestamp.from_datetime(end)
+    last = GHTimestamp.from_datetime(end - timedelta(microseconds=1))
 
-    while current <= end_ts:
+    while current <= last:
         yield current
         current = current.next_hour()

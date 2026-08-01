@@ -186,3 +186,23 @@ class TestRetryingFetcher:
     def test_negative_max_retries_rejected(self):
         with pytest.raises(ValueError):
             RetryingFetcher(FlakyFetcher(0), max_retries=-1)
+
+    def test_mid_body_failure_not_retried(self):
+        class MidBodyFetcher:
+            def __init__(self):
+                self.call_count = 0
+
+            def fetch(self, url):
+                self.call_count += 1
+                yield b"partial"
+                raise NetworkError("dropped mid-body")
+
+        base = MidBodyFetcher()
+        retrying = RetryingFetcher(base, max_retries=3, retry_delay=0.01)
+
+        gen = retrying.fetch("https://example.com/x.gz")
+        assert next(gen) == b"partial"
+        with pytest.raises(NetworkError):
+            next(gen)
+
+        assert base.call_count == 1

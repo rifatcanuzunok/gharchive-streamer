@@ -4,16 +4,18 @@ import logging
 import queue
 import threading
 from collections.abc import Callable, Iterator
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from ._api import stream_events
+from ._models import GHTimestamp
 
 logger = logging.getLogger(__name__)
 
 _PUT_TIMEOUT = 0.2
+_REPORT_TIMEOUT = 0.5
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,7 @@ def parallel_stream_events(
         for c_start, c_end in chunks
     ]
 
+    completed = False
     try:
         finished = 0
         while finished < len(futures):
@@ -54,20 +57,41 @@ def parallel_stream_events(
                 finished += 1
             else:
                 yield item
+        completed = True
     finally:
         stop_event.set()
         _drain(event_queue)
         executor.shutdown(wait=False, cancel_futures=True)
+        _report_failures(
+            chunks,
+            futures,
+            on_chunk_error,
+            raise_on_total=completed,
+            wait_timeout=None if completed else _REPORT_TIMEOUT,
+        )
 
+
+def _report_failures(
+    chunks: list[tuple[datetime, datetime]],
+    futures: list[Future],
+    on_chunk_error: Callable[[ChunkError], None] | None,
+    *,
+    raise_on_total: bool,
+    wait_timeout: float | None,
+) -> None:
+    done, _ = wait(futures, timeout=wait_timeout)
     failures: list[BaseException] = []
     for chunk, future in zip(chunks, futures, strict=True):
+        if future not in done or future.cancelled():
+            continue
         exc = future.exception()
-        if exc is not None:
-            failures.append(exc)
-            logger.error("Chunk failed: %s", exc)
-            if on_chunk_error is not None:
-                on_chunk_error(ChunkError(chunk[0], chunk[1], exc))
-    if failures and len(failures) == len(futures):
+        if exc is None:
+            continue
+        failures.append(exc)
+        logger.error("Chunk failed: %s", exc)
+        if on_chunk_error is not None:
+            on_chunk_error(ChunkError(chunk[0], chunk[1], exc))
+    if raise_on_total and failures and len(failures) == len(futures):
         raise failures[0]
 
 
@@ -122,10 +146,19 @@ def _split_range(
 ) -> list[tuple[datetime, datetime]]:
     if chunk_hours < 1:
         raise ValueError("chunk_hours must be >= 1")
+    first = GHTimestamp.from_datetime(start)
+    last = GHTimestamp.from_datetime(end - timedelta(microseconds=1))
+    if first > last:
+        return []
+    current = datetime(
+        first.year, first.month, first.day, first.hour, tzinfo=timezone.utc
+    )
+    last_dt = datetime(last.year, last.month, last.day, last.hour, tzinfo=timezone.utc)
     chunks = []
-    current = start
-    while current <= end:
-        chunk_end = min(current + timedelta(hours=chunk_hours - 1), end)
+    while current <= last_dt:
+        chunk_end = min(
+            current + timedelta(hours=chunk_hours), last_dt + timedelta(hours=1)
+        )
         chunks.append((current, chunk_end))
-        current = chunk_end + timedelta(hours=1)
+        current = chunk_end
     return chunks

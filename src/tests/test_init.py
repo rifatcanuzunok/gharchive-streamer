@@ -123,7 +123,7 @@ class TestStreamEvents:
         result = list(
             stream_events(
                 datetime(2023, 1, 1, 0, tzinfo=UTC),
-                datetime(2023, 1, 1, 1, tzinfo=UTC),
+                datetime(2023, 1, 1, 2, tzinfo=UTC),
                 fetcher=fetcher,
             )
         )
@@ -138,7 +138,7 @@ class TestStreamEvents:
         result = list(
             stream_events(
                 datetime(2023, 1, 1, 0, tzinfo=UTC),
-                datetime(2023, 1, 1, 1, tzinfo=UTC),
+                datetime(2023, 1, 1, 2, tzinfo=UTC),
                 fetcher=fetcher,
             )
         )
@@ -161,7 +161,7 @@ class TestStreamEvents:
             list(
                 stream_events(
                     datetime(2023, 1, 1, 0, tzinfo=UTC),
-                    datetime(2023, 1, 1, 1, tzinfo=UTC),
+                    datetime(2023, 1, 1, 2, tzinfo=UTC),
                     fetcher=fetcher,
                     max_retries=0,
                 )
@@ -189,7 +189,7 @@ class TestStreamEvents:
         result = list(
             stream_events(
                 datetime(2023, 1, 1, 0, tzinfo=UTC),
-                datetime(2023, 1, 1, 1, tzinfo=UTC),
+                datetime(2023, 1, 1, 2, tzinfo=UTC),
                 fetcher=fetcher,
                 max_retries=2,
                 retry_delay=0.01,
