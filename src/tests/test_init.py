@@ -3,6 +3,8 @@ import io
 import json
 from datetime import datetime, timezone
 
+import pytest
+
 from gharchive_streamer import stream_events
 from gharchive_streamer._client import Fetcher
 from gharchive_streamer._exceptions import DataUnavailableError, NetworkError
@@ -68,7 +70,7 @@ class TestStreamEvents:
 
         assert result == events
 
-    def test_network_error_is_skipped(self):
+    def test_network_error_propagates_without_retries(self):
         events = [{"id": 1}]
         lines = "\n".join(json.dumps(e) for e in events).encode("utf-8") + b"\n"
 
@@ -80,12 +82,43 @@ class TestStreamEvents:
 
         fetcher = FlakyFetcher({hour_url(1): gzip_bytes(lines)})
 
+        with pytest.raises(NetworkError):
+            list(
+                stream_events(
+                    datetime(2023, 1, 1, 0, tzinfo=UTC),
+                    datetime(2023, 1, 1, 1, tzinfo=UTC),
+                    fetcher=fetcher,
+                    max_retries=0,
+                )
+            )
+
+    def test_transient_network_error_is_retried(self):
+        events = [{"id": 1}]
+        lines = "\n".join(json.dumps(e) for e in events).encode("utf-8") + b"\n"
+
+        class FlakyFetcher(MapFetcher):
+            def __init__(self, data):
+                super().__init__(data)
+                self.failures_left = 1
+
+            def fetch(self, url):
+                if self.failures_left > 0 and url == hour_url(0):
+                    self.failures_left -= 1
+                    raise NetworkError(url)
+                yield self.data[url]
+
+        fetcher = FlakyFetcher(
+            {hour_url(0): gzip_bytes(lines), hour_url(1): gzip_bytes(lines)}
+        )
+
         result = list(
             stream_events(
                 datetime(2023, 1, 1, 0, tzinfo=UTC),
                 datetime(2023, 1, 1, 1, tzinfo=UTC),
                 fetcher=fetcher,
+                max_retries=2,
+                retry_delay=0.01,
             )
         )
 
-        assert result == events
+        assert result == events * 2

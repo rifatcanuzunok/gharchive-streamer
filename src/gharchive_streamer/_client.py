@@ -1,9 +1,14 @@
+import logging
+import random
+import time
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 
 import httpx
 
 from ._exceptions import DataUnavailableError, NetworkError
+
+logger = logging.getLogger(__name__)
 
 
 class Fetcher(ABC):
@@ -26,3 +31,43 @@ class HttpFetcher(Fetcher):
             raise NetworkError(f"HTTP {e.response.status_code}: {url}") from e
         except httpx.RequestError as e:
             raise NetworkError(f"Request failed: {url}: {e}") from e
+
+
+class RetryingFetcher(Fetcher):
+    def __init__(
+        self,
+        base_fetcher: Fetcher,
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
+        backoff_factor: float = 2.0,
+    ) -> None:
+        if max_retries < 0:
+            raise ValueError("max_retries must be >= 0")
+        self._fetcher = base_fetcher
+        self._max_retries = max_retries
+        self._retry_delay = retry_delay
+        self._backoff_factor = backoff_factor
+
+    def fetch(self, url: str) -> Iterator[bytes]:
+        attempts = 0
+        while True:
+            try:
+                attempts += 1
+                yield from self._fetcher.fetch(url)
+                return
+            except DataUnavailableError:
+                raise
+            except NetworkError as e:
+                if attempts > self._max_retries:
+                    raise
+                delay = self._retry_delay * (self._backoff_factor ** (attempts - 1))
+                delay *= random.uniform(0.5, 1.5)
+                logger.warning(
+                    "Network error for %s (retry %d/%d), retrying in %.2fs: %s",
+                    url,
+                    attempts,
+                    self._max_retries,
+                    delay,
+                    e,
+                )
+                time.sleep(delay)

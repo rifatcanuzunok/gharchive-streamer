@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from ._cache import CachedFetcher
-from ._client import Fetcher, HttpFetcher
+from ._client import Fetcher, HttpFetcher, RetryingFetcher
 from ._exceptions import (
     DataUnavailableError,
     DecompressionError,
@@ -26,6 +26,7 @@ __all__ = [
     "GHArchiveStreamer",
     "HttpFetcher",
     "NetworkError",
+    "RetryingFetcher",
     "stream_events",
 ]
 
@@ -37,9 +38,13 @@ def stream_events(
     use_cache: bool = False,
     cache_dir: str = ".gharchive_cache",
     fetcher: Fetcher | None = None,
+    max_retries: int = 3,
+    retry_delay: float = 1.0,
 ) -> Iterator[dict[str, Any]]:
     if not fetcher:
         fetcher = HttpFetcher()
+    if max_retries > 0:
+        fetcher = RetryingFetcher(fetcher, max_retries=max_retries, retry_delay=retry_delay)
     if use_cache:
         fetcher = CachedFetcher(fetcher, cache_dir=cache_dir)
 
@@ -50,7 +55,3 @@ def stream_events(
             yield from streamer.stream_hour(ts)
         except DataUnavailableError:
             logger.warning("No data found, skipping: %s", ts.to_url())
-        except NetworkError as e:
-            logger.error("Network error for %s: %s", ts.to_url(), e)
-        except Exception as e:
-            logger.error("Unexpected error for %s: %s", ts.to_url(), e)

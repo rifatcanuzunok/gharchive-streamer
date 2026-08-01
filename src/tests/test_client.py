@@ -1,8 +1,21 @@
 import httpx
 import pytest
 
-from gharchive_streamer._client import HttpFetcher
+from gharchive_streamer._client import HttpFetcher, RetryingFetcher
 from gharchive_streamer._exceptions import DataUnavailableError, NetworkError
+
+
+class FlakyFetcher:
+    def __init__(self, failures: int, data: bytes = b"ok"):
+        self.failures = failures
+        self.data = data
+        self.call_count = 0
+
+    def fetch(self, url: str):
+        self.call_count += 1
+        if self.call_count <= self.failures:
+            raise NetworkError(f"boom {self.call_count}")
+        yield self.data
 
 
 class TestHttpFetcher:
@@ -54,3 +67,53 @@ class TestHttpFetcher:
         result = b"".join(fetcher.fetch(url))
         assert result == b"hello"
         custom_client.close()
+
+
+class TestRetryingFetcher:
+    def test_retries_until_success(self):
+        base = FlakyFetcher(failures=2)
+        retrying = RetryingFetcher(base, max_retries=3, retry_delay=0.01)
+
+        result = b"".join(retrying.fetch("https://example.com/x.gz"))
+
+        assert result == b"ok"
+        assert base.call_count == 3
+
+    def test_raises_after_retries_exhausted(self):
+        base = FlakyFetcher(failures=5)
+        retrying = RetryingFetcher(base, max_retries=2, retry_delay=0.01)
+
+        with pytest.raises(NetworkError):
+            list(retrying.fetch("https://example.com/x.gz"))
+
+        assert base.call_count == 3
+
+    def test_no_retry_when_max_retries_zero(self):
+        base = FlakyFetcher(failures=1)
+        retrying = RetryingFetcher(base, max_retries=0)
+
+        with pytest.raises(NetworkError):
+            list(retrying.fetch("https://example.com/x.gz"))
+
+        assert base.call_count == 1
+
+    def test_data_unavailable_not_retried(self):
+        class NotFoundFetcher:
+            def __init__(self):
+                self.call_count = 0
+
+            def fetch(self, url):
+                self.call_count += 1
+                raise DataUnavailableError(url)
+
+        base = NotFoundFetcher()
+        retrying = RetryingFetcher(base, max_retries=3, retry_delay=0.01)
+
+        with pytest.raises(DataUnavailableError):
+            list(retrying.fetch("https://example.com/x.gz"))
+
+        assert base.call_count == 1
+
+    def test_negative_max_retries_rejected(self):
+        with pytest.raises(ValueError):
+            RetryingFetcher(FlakyFetcher(0), max_retries=-1)
