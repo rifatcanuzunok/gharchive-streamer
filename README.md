@@ -75,12 +75,6 @@ for event in stream_events(start, end, use_cache=True, cache_dir=".gharchive_cac
 
 Tune downloads with `max_retries`, `retry_delay`, and `timeout` (seconds). Timestamps are normalized to UTC — naive datetimes are treated as UTC.
 
-## Live smoke test
-
-```bash
-uv run python live_test.py --use-cache
-```
-
 ## License
 
 MIT
