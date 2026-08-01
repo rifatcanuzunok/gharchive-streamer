@@ -79,6 +79,17 @@ for event in stream_events(start, end, use_cache=True, cache_dir=".gharchive_cac
 
 Tune downloads with `max_retries`, `retry_delay`, and `timeout` (seconds). Timestamps are normalized to UTC — naive datetimes are treated as UTC.
 
+## Development
+
+```bash
+uv sync --extra dev   # install with dev extras (pytest, mypy, ruff)
+uv run pytest         # run tests
+uv run ruff check .   # lint
+uv run mypy src       # type check
+```
+
+CI (`.github/workflows/ci.yml`) runs these checks on every push and PR.
+
 ## License
 
 MIT
