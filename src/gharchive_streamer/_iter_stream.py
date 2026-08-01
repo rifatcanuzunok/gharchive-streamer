@@ -15,7 +15,7 @@ class IterStream(io.RawIOBase):
             try:
                 chunk = next(self._it)
                 if not chunk:
-                    break
+                    continue
                 self._buffer += chunk
             except StopIteration:
                 break

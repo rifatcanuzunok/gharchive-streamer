@@ -39,15 +39,21 @@ def hour_url(hour: int) -> str:
     return GHTimestamp(2023, 1, 1, hour).to_url()
 
 
+class TestStreamEventsLifecycle:
     def test_stream_events_closes_its_own_fetcher(self, monkeypatch):
-        closed = []
+        instances = []
 
         class SpyHttpFetcher(HttpFetcher):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.close_count = 0
+                instances.append(self)
+
             def close(self):
-                closed.append(True)
+                self.close_count += 1
                 super().close()
 
-        monkeypatch.setattr("gharchive_streamer.HttpFetcher", SpyHttpFetcher)
+        monkeypatch.setattr("gharchive_streamer._api.HttpFetcher", SpyHttpFetcher)
 
         result = list(
             stream_events(
@@ -57,7 +63,30 @@ def hour_url(hour: int) -> str:
         )
 
         assert result == []
-        assert closed == [True]
+        assert len(instances) == 1
+        fetcher = instances[0]
+        assert fetcher.close_count == 1
+        assert fetcher._client.is_closed
+
+    def test_stream_events_forwards_timeout(self, monkeypatch):
+        captured = []
+
+        class SpyHttpFetcher(HttpFetcher):
+            def __init__(self, *args, **kwargs):
+                captured.append(kwargs)
+                super().__init__(*args, **kwargs)
+
+        monkeypatch.setattr("gharchive_streamer._api.HttpFetcher", SpyHttpFetcher)
+
+        list(
+            stream_events(
+                datetime(2023, 1, 2, 0, tzinfo=UTC),
+                datetime(2023, 1, 1, 0, tzinfo=UTC),
+                timeout=42.0,
+            )
+        )
+
+        assert captured == [{"timeout": 42.0}]
 
     def test_stream_events_does_not_close_injected_fetcher(self):
         class SpyFetcher(Fetcher):
@@ -87,7 +116,9 @@ class TestStreamEvents:
     def test_yields_events_across_hours(self):
         events = [{"id": 1, "type": "PushEvent"}, {"id": 2, "type": "IssuesEvent"}]
         lines = "\n".join(json.dumps(e) for e in events).encode("utf-8") + b"\n"
-        fetcher = MapFetcher({hour_url(0): gzip_bytes(lines), hour_url(1): gzip_bytes(lines)})
+        fetcher = MapFetcher(
+            {hour_url(0): gzip_bytes(lines), hour_url(1): gzip_bytes(lines)}
+        )
 
         result = list(
             stream_events(

@@ -14,6 +14,7 @@ class CountingFetcher(Fetcher):
         yield self.data
 
 
+class TestCloseDelegation:
     def test_close_delegates_to_base_fetcher(self, tmp_path):
         class ClosableCountingFetcher(CountingFetcher):
             def __init__(self):

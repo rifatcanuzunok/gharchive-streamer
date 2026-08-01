@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -13,6 +13,31 @@ class TestGHTimestamp:
         assert ts.month == 12
         assert ts.day == 25
         assert ts.hour == 14
+
+    def test_from_datetime_naive_assumed_utc(self):
+        ts = GHTimestamp.from_datetime(datetime(2023, 1, 1, 5))
+        assert ts == GHTimestamp(2023, 1, 1, 5)
+
+    def test_from_datetime_utc_aware(self):
+        ts = GHTimestamp.from_datetime(
+            datetime(2023, 1, 1, 5, tzinfo=timezone.utc)
+        )
+        assert ts == GHTimestamp(2023, 1, 1, 5)
+
+    def test_from_datetime_non_utc_converted_to_utc(self):
+        tz = timezone(timedelta(hours=3))
+        ts = GHTimestamp.from_datetime(datetime(2023, 1, 1, 3, tzinfo=tz))
+        assert ts == GHTimestamp(2023, 1, 1, 0)
+
+    def test_from_datetime_conversion_crosses_midnight(self):
+        tz = timezone(timedelta(hours=3))
+        ts = GHTimestamp.from_datetime(datetime(2023, 1, 1, 1, tzinfo=tz))
+        assert ts == GHTimestamp(2022, 12, 31, 22)
+
+    def test_from_datetime_negative_offset(self):
+        tz = timezone(timedelta(hours=-5))
+        ts = GHTimestamp.from_datetime(datetime(2023, 1, 1, 22, tzinfo=tz))
+        assert ts == GHTimestamp(2023, 1, 2, 3)
 
     def test_equality(self):
         ts1 = GHTimestamp(2023, 1, 1, 0)
@@ -77,6 +102,29 @@ class TestGHTimestamp:
     def test_invalid_hour(self):
         with pytest.raises(ValueError):
             GHTimestamp(2023, 1, 1, 24)
+
+    def test_invalid_year(self):
+        with pytest.raises(ValueError):
+            GHTimestamp(0, 1, 1, 0)
+
+    def test_invalid_day(self):
+        with pytest.raises(ValueError):
+            GHTimestamp(2023, 1, 32, 0)
+
+    def test_feb_30_invalid(self):
+        with pytest.raises(ValueError):
+            GHTimestamp(2023, 2, 30, 0)
+
+    def test_apr_31_invalid(self):
+        with pytest.raises(ValueError):
+            GHTimestamp(2023, 4, 31, 0)
+
+    def test_feb_29_non_leap_year_invalid(self):
+        with pytest.raises(ValueError):
+            GHTimestamp(2023, 2, 29, 0)
+
+    def test_feb_29_leap_year_valid(self):
+        assert GHTimestamp(2020, 2, 29, 23).next_hour() == GHTimestamp(2020, 3, 1, 0)
 
 
 class TestGenerateTimestamps:

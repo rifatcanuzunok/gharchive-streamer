@@ -68,6 +68,20 @@ class TestHttpFetcher:
         assert result == b"hello"
         custom_client.close()
 
+    def test_timeout_applied_to_owned_client(self):
+        fetcher = HttpFetcher(timeout=30.0)
+        assert fetcher._client.timeout.connect == 30.0
+
+    def test_default_timeout_when_not_given(self):
+        fetcher = HttpFetcher()
+        assert fetcher._client.timeout.connect == 5.0
+
+    def test_timeout_ignored_when_client_injected(self):
+        client = httpx.Client(timeout=15.0)
+        fetcher = HttpFetcher(client=client, timeout=30.0)
+        assert fetcher._client.timeout.connect == 15.0
+        client.close()
+
 
 class TestHttpFetcherLifecycle:
     def test_close_closes_owned_client(self):

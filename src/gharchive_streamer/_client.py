@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 import random
 import time
@@ -17,15 +18,25 @@ class Fetcher(ABC):
     @abstractmethod
     def fetch(self, url: str) -> Iterator[bytes]: ...
 
-    def close(self) -> None:
+    # Optional lifecycle hook; concrete fetchers may override to release resources.
+    def close(self) -> None:  # noqa: B027 - deliberate no-op default
         pass
 
 
 class HttpFetcher(Fetcher):
-    def __init__(self, client: httpx.Client | None = None):
+    def __init__(
+        self,
+        client: httpx.Client | None = None,
+        timeout: float | None = None,
+    ):
         self._owns_client = client is None
         if client is None:
-            client = httpx.Client()
+            # None keeps httpx's own default (5s); an explicit value is applied
+            client = (
+                httpx.Client()
+                if timeout is None
+                else httpx.Client(timeout=timeout)
+            )
         self._client = client
 
     def close(self) -> None:
@@ -39,10 +50,9 @@ class HttpFetcher(Fetcher):
         self.close()
 
     def __del__(self) -> None:
-        try:
+        # __del__ must never raise or log during interpreter shutdown
+        with contextlib.suppress(Exception):
             self.close()
-        except Exception:  # noqa: BLE001, S110 - __del__ must never raise or log
-            pass
 
     def fetch(self, url: str) -> Iterator[bytes]:
         try:
@@ -88,7 +98,8 @@ class RetryingFetcher(Fetcher):
                 if attempts > self._max_retries:
                     raise
                 delay = self._retry_delay * (self._backoff_factor ** (attempts - 1))
-                delay *= random.uniform(0.5, 1.5)
+                # jitter for retry backoff, not security-sensitive
+                delay *= random.uniform(0.5, 1.5)  # noqa: S311
                 logger.warning(
                     "Network error for %s (retry %d/%d), retrying in %.2fs: %s",
                     url,
